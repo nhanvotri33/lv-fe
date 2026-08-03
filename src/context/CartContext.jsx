@@ -35,6 +35,31 @@ export const CartProvider = ({ children }) => {
   // Xóa logic load combos cũ
 
   useEffect(() => {
+    // Kiểm tra xem có sản phẩm chính (máy điện thoại/máy tính bảng...) nào trong giỏ không
+    const hasMainProduct = cartItems.some(item => !item.isAddon);
+    
+    // Nếu KHÔNG có sản phẩm chính, nhưng lại CÓ phụ kiện mua kèm (isAddon = true)
+    if (!hasMainProduct && cartItems.some(item => item.isAddon)) {
+      setCartItems((prevItems) =>
+        prevItems.map((item) => {
+          if (item.isAddon) {
+            // Khôi phục giá gốc của phụ kiện khi mua lẻ độc lập
+            const normalPrice = item.originalBasePrice || item.price;
+            // Tạo lại mã định danh giỏ hàng tiêu chuẩn (không có tiền tố addon-)
+            const normalCartId = `${item.id}-${item.selectedStorage || ''}-${item.selectedColor || ''}${item.selectedWarranty ? `-${item.selectedWarranty.id}` : ''}`;
+            return {
+              ...item,
+              isAddon: false,
+              price: normalPrice,
+              cartId: normalCartId
+            };
+          }
+          return item;
+        })
+      );
+      return;
+    }
+    
     localStorage.setItem('cart', JSON.stringify(cartItems));
   }, [cartItems]);
 
@@ -42,7 +67,7 @@ export const CartProvider = ({ children }) => {
     setCartItems((prevItems) => {
       const cartId = product.isAddon && product.appliedCampaignId
         ? `addon-${product.appliedCampaignId}-${product.id}-${product.selectedStorage || ''}-${product.selectedColor || ''}`
-        : `${product.id}-${product.selectedStorage || ''}-${product.selectedColor || ''}`;
+        : `${product.id}-${product.selectedStorage || ''}-${product.selectedColor || ''}${product.selectedWarranty ? `-${product.selectedWarranty.id}` : ''}`;
 
       const existingItemIndex = prevItems.findIndex(item => item.cartId === cartId);
 
@@ -56,7 +81,10 @@ export const CartProvider = ({ children }) => {
         ...product,
         quantity,
         cartId,
-        originalBasePrice: product.originalBasePrice || product.price
+        originalBasePrice: product.originalBasePrice || product.price,
+        warrantyId: product.selectedWarranty?.id || null,
+        warrantyName: product.selectedWarranty?.name || null,
+        warrantyPrice: product.selectedWarranty?.basePrice || 0
       }];
     });
 
@@ -80,16 +108,9 @@ export const CartProvider = ({ children }) => {
     setCartItems([]);
   };
 
-  //Logic tính toán động giá ưu đãi sản phẩm mua kèm và tổng tiền (10%, 15%)
- // const counts = {};
- // const displayCartItems = cartItems.map(i => ({
- //   ...i,
- //   price: (i.originalBasePrice || i.price) * (i.isAddon && i.parentCartItemId ? ((counts[i.parentCartItemId] = (counts[i.parentCartItemId] || 0) + 1) === 1 ? 0.9 : 0.85) : 1)
- // }));
-
-  //  logic tính tổng tiền trong giỏ
+  // logic tính tổng tiền trong giỏ (bao gồm cả giá gói bảo hành đi kèm)
   const cartTotal = cartItems.reduce(
-    (total, item) => total + item.price * item.quantity,
+    (total, item) => total + (item.price + (item.warrantyPrice || 0)) * item.quantity,
     0
   );
 
